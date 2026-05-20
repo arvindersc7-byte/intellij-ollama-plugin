@@ -1,0 +1,30 @@
+<idea-plugin>
+
+    <id>com.llmplugin</id>
+
+    <name>LLM Code Generator</name>
+
+    <vendor email="arvindersc7@gmail.com">
+        Arvinder
+    </vendor>
+
+    <description>
+        Arvinder Singh - IntelliJ plugin for running local AI and LLM-powered coding assistance.
+    </description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.java</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+
+        <toolWindow
+                id="Arvinder AI Code Generator"
+                anchor="right"
+                factoryClass="com.MyToolWindowFactory"
+                secondary="false"
+                canCloseContents="false"
+        />
+
+    </extensions>
+
+</idea-plugin>
