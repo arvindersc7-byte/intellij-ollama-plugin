@@ -1,375 +1,131 @@
 package com;
 
-import com.intellij.lang.java.JavaLanguage;
+import com.intellij.execution.ExecutionManager;
+import com.intellij.execution.process.ProcessAdapter;
+import com.intellij.execution.process.ProcessEvent;
+import com.intellij.execution.process.ProcessHandler;
+import com.intellij.execution.process.ProcessOutputTypes;
+import com.intellij.execution.runners.ExecutionEnvironment;
+import com.intellij.execution.ExecutionListener;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.command.WriteCommandAction;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowFactory;
-import com.intellij.psi.PsiDirectory;
-import com.intellij.psi.PsiFile;
-import com.intellij.psi.PsiFileFactory;
-import com.intellij.psi.PsiManager;
 import com.intellij.ui.content.Content;
 import com.intellij.ui.content.ContentFactory;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
+import com.intellij.util.messages.MessageBusConnection;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MyToolWindowFactory implements ToolWindowFactory {
 
-    private static final Logger LOG =
-            Logger.getInstance(MyToolWindowFactory.class);
-
     @Override
     public void createToolWindowContent(Project project, ToolWindow toolWindow) {
-
-        LOG.info("TOOL WINDOW LOADED");
-
-        // =========================================
-        // MAIN PANEL
-        // =========================================
         JPanel panel = new JPanel(new BorderLayout());
+        JTextArea logArea = new JTextArea();
+        logArea.setEditable(false);
+        JScrollPane scrollPane = new JScrollPane(logArea);
 
-        // =========================================
-        // TOP PANEL
-        // =========================================
-        JPanel topPanel = new JPanel(new BorderLayout());
+        // Add Clean button at the bottom
+        JButton clearButton = new JButton("Clean");
+        clearButton.addActionListener(e -> logArea.setText(""));
 
-        JTextField inputField = new JTextField();
-        JButton generateButton = new JButton("Generate");
+        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        bottomPanel.add(clearButton);
 
-        topPanel.add(inputField, BorderLayout.CENTER);
-        topPanel.add(generateButton, BorderLayout.EAST);
-
-        // =========================================
-        // OUTPUT AREA
-        // =========================================
-        JTextArea outputArea = new JTextArea();
-
-        outputArea.setEditable(false);
-        outputArea.setLineWrap(true);
-        outputArea.setWrapStyleWord(true);
-
-        JScrollPane scrollPane = new JScrollPane(outputArea);
-
-        // =========================================
-        // ADD COMPONENTS
-        // =========================================
-        panel.add(topPanel, BorderLayout.NORTH);
         panel.add(scrollPane, BorderLayout.CENTER);
+        panel.add(bottomPanel, BorderLayout.SOUTH);
 
-        // =========================================
-        // TOOL WINDOW CONTENT
-        // =========================================
         ContentFactory contentFactory = ContentFactory.getInstance();
-
-        Content content =
-                contentFactory.createContent(
-                        panel,
-                        "",
-                        false
-                );
-
+        Content content = contentFactory.createContent(panel, "Arvinder Log Watcher", false);
         toolWindow.getContentManager().addContent(content);
 
-        // =========================================
-        // BUTTON ACTION
-        // =========================================
-        generateButton.addActionListener(e -> {
+        // Attach to already running processes
+        attachConsoleListeners(project, logArea);
 
-            String userCommand =
-                    inputField.getText().trim();
-
-            if (userCommand.isEmpty()) {
-
-                outputArea.append("Please enter prompt\n");
-                return;
+        // Subscribe to new executions
+        MessageBusConnection connection = project.getMessageBus().connect();
+        connection.subscribe(ExecutionManager.EXECUTION_TOPIC, new ExecutionListener() {
+            @Override
+            public void processStarted(String executorId, ExecutionEnvironment env, ProcessHandler handler) {
+                if (handler != null) {
+                    attachHandler(handler, logArea, project);
+                }
             }
-
-            inputField.setText("");
-
-            outputArea.append("\nGenerating...\n");
-
-            // =========================================
-            // RUN IN BACKGROUND THREAD
-            // =========================================
-            ApplicationManager.getApplication()
-                    .executeOnPooledThread(() -> {
-
-                        try {
-
-                            OkHttpClient client =
-                                    new OkHttpClient.Builder()
-                                            .connectTimeout(
-                                                    60,
-                                                    TimeUnit.SECONDS
-                                            )
-                                            .readTimeout(
-                                                    300,
-                                                    TimeUnit.SECONDS
-                                            )
-                                            .writeTimeout(
-                                                    300,
-                                                    TimeUnit.SECONDS
-                                            )
-                                            .build();
-
-                            // =========================================
-                            // OLLAMA REQUEST JSON
-                            // =========================================
-                            String json =
-                                    "{"
-                                            + "\"model\":\"llama2\","
-                                            + "\"prompt\":\"userCommand\","
-                                            + "\"stream\":false"
-                                            + " }";
-
-                            LOG.info("Sending request to deepseek-coder");
-
-                            Request request =
-                                    new Request.Builder()
-                                            .url("http://localhost:11434/api/generate")
-                                            .post(
-                                                    RequestBody.create(
-                                                            json,
-                                                            MediaType.parse(
-                                                                    "application/json"
-                                                            )
-                                                    )
-                                            )
-                                            .build();
-
-                            // =========================================
-                            // EXECUTE API CALL
-                            // =========================================
-                            try (Response response =
-                                         client.newCall(request).execute()) {
-
-                                if (!response.isSuccessful()) {
-
-                                    String errorBody =
-                                            response.body() != null
-                                                    ? response.body().string()
-                                                    : "Unknown Error";
-
-                                    ApplicationManager.getApplication()
-                                            .invokeLater(() ->
-                                                    outputArea.append(
-                                                            "HTTP Error: "
-                                                                    + errorBody
-                                                                    + "\n"
-                                                    )
-                                            );
-
-                                    return;
-                                }
-
-                                String body =
-                                        response.body() != null
-                                                ? response.body().string()
-                                                : "";
-
-                                LOG.info("OLLAMA RESPONSE:");
-                                LOG.info(body);
-
-                                String generatedCode =
-                                        extractResponse(body);
-
-                                // =========================================
-                                // UPDATE UI
-                                // =========================================
-                                ApplicationManager.getApplication()
-                                        .invokeLater(() -> {
-
-                                            outputArea.append(
-                                                    "\n========== GENERATED CODE ==========\n"
-                                            );
-
-                                            outputArea.append(
-                                                    generatedCode
-                                            );
-
-                                            outputArea.append(
-                                                    "\n====================================\n"
-                                            );
-                                        });
-
-                                // =========================================
-                                // CREATE JAVA FILE
-                                // =========================================
-                                ApplicationManager.getApplication()
-                                        .invokeLater(() -> {
-
-                                            WriteCommandAction
-                                                    .runWriteCommandAction(
-                                                            project,
-                                                            () -> {
-
-                                                                try {
-
-                                                                    PsiDirectory dir =
-                                                                            PsiManager
-                                                                                    .getInstance(project)
-                                                                                    .findDirectory(
-                                                                                            project.getBaseDir()
-                                                                                    );
-
-                                                                    if (dir == null) {
-
-                                                                        outputArea.append(
-                                                                                "Project directory not found\n"
-                                                                        );
-
-                                                                        return;
-                                                                    }
-
-                                                                    String fileName =
-                                                                            extractClassName(
-                                                                                    generatedCode
-                                                                            );
-
-                                                                    PsiFile psiFile =
-                                                                            PsiFileFactory
-                                                                                    .getInstance(project)
-                                                                                    .createFileFromText(
-                                                                                            fileName,
-                                                                                            JavaLanguage.INSTANCE,
-                                                                                            generatedCode
-                                                                                    );
-
-                                                                    dir.add(psiFile);
-
-                                                                    outputArea.append(
-                                                                            "\nFile created: "
-                                                                                    + fileName
-                                                                                    + "\n"
-                                                                    );
-
-                                                                } catch (Exception ex) {
-
-                                                                    LOG.error(ex);
-
-                                                                    outputArea.append(
-                                                                            "\nFile creation failed: "
-                                                                                    + ex.getMessage()
-                                                                                    + "\n"
-                                                                    );
-                                                                }
-                                                            }
-                                                    );
-                                        });
-                            }
-
-                        } catch (Exception ex) {
-
-                            LOG.error(ex);
-
-                            ApplicationManager.getApplication()
-                                    .invokeLater(() ->
-                                            outputArea.append(
-                                                    "\nError: "
-                                                            + ex.getMessage()
-                                                            + "\n"
-                                            )
-                                    );
-                        }
-                    });
         });
     }
 
-    // =========================================
-    // EXTRACT OLLAMA RESPONSE
-    // =========================================
-    private String extractResponse(String body) {
-
-        if (body == null || body.isEmpty()) {
-            return "No response";
-        }
-
-        try {
-
-            int start =
-                    body.indexOf("\"response\":\"");
-
-            if (start == -1) {
-                return body;
+    private void attachConsoleListeners(Project project, JTextArea logArea) {
+        ProcessHandler[] handlers = ExecutionManager.getInstance(project).getRunningProcesses();
+        for (ProcessHandler handler : handlers) {
+            if (handler != null) {
+                attachHandler(handler, logArea, project);
             }
-
-            start += 12;
-
-            int end =
-                    body.indexOf("\",\"done\"", start);
-
-            if (end == -1) {
-                end = body.length();
-            }
-
-            return body.substring(start, end)
-                    .replace("\\n", "\n")
-                    .replace("\\\"", "\"")
-                    .replace("\\t", "\t")
-                    .replace("\\r", "");
-
-        } catch (Exception ex) {
-
-            LOG.error(ex);
-
-            return body;
         }
     }
 
-    // =========================================
-    // ESCAPE JSON STRING
-    // =========================================
-    private String escapeJson(String text) {
+    private void attachHandler(ProcessHandler handler, JTextArea logArea, Project project) {
+        handler.addProcessListener(new ProcessAdapter() {
+            @Override
+            public void onTextAvailable(ProcessEvent event, com.intellij.openapi.util.Key outputType) {
+                String text = event.getText();
 
-        return text
-                .replace("\\", "\\\\")
-                .replace("\"", "\\\"");
-    }
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    // Check both stdout and stderr for exceptions
+                    if (isErrorLine(text) || isStackTraceLine(text)) {
+                        logArea.append(text);
 
-    // =========================================
-    // EXTRACT CLASS NAME
-    // =========================================
-    private String extractClassName(String code) {
+                        // Show popup dialog in IntelliJ center when new exception header is detected
+                        if (isErrorLine(text)) {
+                            String lineNumber = extractLineNumber(text);
+                            String message = (lineNumber != null)
+                                    ? text + "\nCulprit line: " + lineNumber
+                                    : text;
 
-        try {
-
-            String[] lines = code.split("\n");
-
-            for (String line : lines) {
-
-                line = line.trim();
-
-                if (line.contains("class ")) {
-
-                    String[] tokens =
-                            line.split("\\s+");
-
-                    for (int i = 0; i < tokens.length; i++) {
-
-                        if ("class".equals(tokens[i])
-                                && i + 1 < tokens.length) {
-
-                            return tokens[i + 1] + ".java";
+                            Messages.showErrorDialog(project,
+                                    message,
+                                    "Exception Detected");
                         }
                     }
-                }
+                });
             }
+        });
+    }
 
-        } catch (Exception ex) {
+    /**
+     * Detects the start of an exception or error message.
+     */
+    private boolean isErrorLine(String line) {
+        return line.contains("Exception")   // ArithmeticException, NullPointerException, etc.
+                || line.contains("Error")  // AssertionError, OutOfMemoryError
+                || line.contains("Caused by")
+                || line.contains("Failure")
+                || line.contains("SQLException")
+                || line.contains("DataAccessException")
+                || line.contains("JpaSystemException")
+                || line.contains("KafkaException")
+                || line.contains("SerializationException");
+    }
 
-            LOG.error(ex);
+    /**
+     * Detects stack trace lines (culprit code lines).
+     */
+    private boolean isStackTraceLine(String line) {
+        return line.trim().startsWith("at ");
+    }
+
+    /**
+     * Extracts line number from a stack trace line like "(MyClass.java:42)".
+     */
+    private String extractLineNumber(String line) {
+        Matcher matcher = Pattern.compile("\\((.*\\.java):(\\d+)\\)").matcher(line);
+        if (matcher.find()) {
+            return matcher.group(2); // line number
         }
-
-        return "GeneratedFile.java";
+        return null;
     }
 }

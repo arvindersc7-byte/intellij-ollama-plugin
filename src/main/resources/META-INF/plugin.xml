@@ -7,6 +7,7 @@
     <vendor email="arvindersc7@gmail.com">
         Arvinder
     </vendor>
+    <idea-version since-build="221" until-build="999.*"/>
 
     <description>
         Arvinder Singh - IntelliJ plugin for running local AI and LLM-powered coding assistance.
@@ -18,7 +19,7 @@
     <extensions defaultExtensionNs="com.intellij">
 
         <toolWindow
-                id="Arvinder AI Code Generator"
+                id="Arvinder AI Log Watcher"
                 anchor="right"
                 factoryClass="com.MyToolWindowFactory"
                 secondary="false"

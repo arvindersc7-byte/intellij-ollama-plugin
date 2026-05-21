@@ -1,6 +1,17 @@
 plugins {
-    id 'java'
-    id 'org.jetbrains.intellij' version '1.17.3'
+    id "org.jetbrains.intellij" version "1.17.3"
+    id "java"
+}
+
+intellij {
+    version = "2023.1"   // stable baseline SDK
+    type = "IC"          // Community edition baseline
+    plugins = ["java"]
+}
+
+patchPluginXml {
+    sinceBuild = "221"     // IntelliJ 2022.1 baseline
+    untilBuild = "999.*"   // allow all future builds
 }
 
 group = 'com'
@@ -15,18 +26,15 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
-intellij {
-    version = "2024.2"
-    type = "IC"
-    plugins = ["java"]
-}
 
 dependencies {
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.xerial:sqlite-jdbc:3.45.1.0'
+
+
 }
 
 patchPluginXml {
-    sinceBuild = "242"
+    sinceBuild = "221"
     untilBuild = "242.*"
 }
