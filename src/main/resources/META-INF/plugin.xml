@@ -7,7 +7,7 @@
     <vendor email="arvindersc7@gmail.com">
         Arvinder
     </vendor>
-    <idea-version since-build="221" until-build="999.*"/>
+    <idea-version since-build="223" until-build="999.*"/>
 
     <description>
         Arvinder Singh - IntelliJ plugin for running local AI and LLM-powered coding assistance.
